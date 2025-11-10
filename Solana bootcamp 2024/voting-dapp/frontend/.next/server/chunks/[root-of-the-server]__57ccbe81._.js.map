@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 3, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"","debugId":null}},
+    {"offset": {"line": 55, "column": 0}, "map": {"version":3,"sources":["file:///Users/ivaylobakalov/web3/solana/voting-dapp/frontend/src/app/api/vote/route.tsx"],"sourcesContent":["import { NextRequest, NextResponse } from 'next/server'\nimport { ActionGetResponse, ACTIONS_CORS_HEADERS } from '@solana/actions'\n\nexport async function GET(request: NextRequest) {\n  const actionMetaData: ActionGetResponse = {\n    icon: 'https://thumbs.dreamstime.com/z/peanut-butter-15388988.jpg?ct=jpeg',\n    title: 'Vote for your favorite type of peanut butter',\n    description: 'Vote between Cranchy, Smooth peanut butter',\n    label: 'Vote'\n  }\n\n  return NextResponse.json(actionMetaData, {headers: ACTIONS_CORS_HEADERS})\n}\n"],"names":[],"mappings":";;;;AAAA;;;;;;;;AAGO,eAAe,IAAI,OAAoB;IAC5C,MAAM,iBAAoC;QACxC,MAAM;QACN,OAAO;QACP,aAAa;QACb,OAAO;IACT;IAEA,OAAO,gJAAY,CAAC,IAAI,CAAC,gBAAgB;QAAC,SAAS;IAAoB;AACzE","debugId":null}}]
+}

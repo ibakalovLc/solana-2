@@ -1,0 +1,9 @@
+{
+  "[project]/frontend/src/components/cluster-dropdown.tsx [app-client] (ecmascript, next/dynamic entry)": {
+    "id": "[project]/frontend/src/components/cluster-dropdown.tsx [app-client] (ecmascript, next/dynamic entry)",
+    "files": [
+      "static/chunks/frontend_src_components_cluster-dropdown_tsx_f09ebeae._.js",
+      "static/chunks/frontend_src_components_cluster-dropdown_tsx_1c6bf88d._.js"
+    ]
+  }
+}

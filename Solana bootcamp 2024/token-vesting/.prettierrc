@@ -1,0 +1,18 @@
+{
+  "arrowParens": "always",
+  "printWidth": 120,
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "overrides": [
+    {
+      "files": "*.rs",
+      "options": {
+        "printWidth": 100,
+        "tabWidth": 4,
+        "useTabs": false,
+        "endOfLine": "lf"
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "recursive": true,
+  "exit": true,
+  "timeout": 5000,
+  "spec": "src/**/*.spec.ts",
+  "extension": ["ts"],
+  "reporter": "spec",
+  "require": ["ts-node/register"],
+  "watch-files": ["src/**/*.spec.ts"],
+  "watch-ignore": ["node_modules"]
+}

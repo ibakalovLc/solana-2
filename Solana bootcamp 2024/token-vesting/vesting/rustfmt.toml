@@ -1,0 +1,42 @@
+# Rustfmt configuration for Solana/Anchor projects
+
+# Edition
+edition = "2021"
+
+# Line width
+max_width = 100
+
+# Indentation
+tab_spaces = 4
+
+# Imports
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# Formatting options
+newline_style = "Unix"
+use_small_heuristics = "Default"
+
+# Function formatting
+fn_single_line = false
+where_single_line = false
+
+# Control flow
+control_brace_style = "AlwaysSameLine"
+
+# Trailing comma
+trailing_comma = "Vertical"
+trailing_semicolon = true
+
+# Spaces
+space_before_colon = false
+space_after_colon = true
+
+# Comments
+normalize_comments = true
+wrap_comments = true
+comment_width = 80
+
+# Chains
+chain_width = 60
+
