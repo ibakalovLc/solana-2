@@ -51,50 +51,51 @@ describe("token-lottery", () => {
 
   it("Is initialized!", async () => {
     // Add your test here.
-    // const getBLockHash = await provider.connection.getLatestBlockhash();
+    const getBLockHash = await provider.connection.getLatestBlockhash();
 
-    // // Try to initialize config, skip if already exists
-    // try {
-    //   const initConfig = await program.methods
-    //     .initializeConfig(new BN(0), new BN(10000), new BN(10000))
-    //     .instruction();
+    // Try to initialize config, skip if already exists
+    try {
+      const initConfig = await program.methods
+        .initializeConfig(new BN(0), new BN(10000), new BN(10000))
+        .instruction();
 
-    //   const tx = new web3.Transaction({
-    //     feePayer: wallet.publicKey,
-    //     blockhash: getBLockHash.blockhash,
-    //     lastValidBlockHeight: getBLockHash.lastValidBlockHeight,
-    //   }).add(initConfig);
+      const tx = new web3.Transaction({
+        feePayer: wallet.publicKey,
+        blockhash: getBLockHash.blockhash,
+        lastValidBlockHeight: getBLockHash.lastValidBlockHeight,
+      }).add(initConfig);
 
-    //   const txId = await provider.sendAndConfirm(tx, [], {
-    //     skipPreflight: true,
-    //   });
-    //   console.log("Config initialized:", txId);
-    // } catch (error: any) {
-    //   throw error;
-    // }
+      const txId = await provider.sendAndConfirm(tx, [], {
+        skipPreflight: true,
+      });
+      
+      console.log("Config initialized:", txId);
+    } catch (error: any) {
+      throw error;
+    }
 
-    // const initLoteryTx = await program.methods
-    //   .initilizeLibrary()
-    //   .accounts({
-    //     tokenProgram: TOKEN_PROGRAM_ID,
-    //   })
-    //   .signers([wallet.payer])
-    //   .instruction();
+    const initLoteryTx = await program.methods
+      .initilizeLibrary()
+      .accounts({
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([wallet.payer])
+      .instruction();
 
-    // const tx2 = new web3.Transaction({
-    //   feePayer: wallet.publicKey,
-    //   blockhash: getBLockHash.blockhash,
-    //   lastValidBlockHeight: getBLockHash.lastValidBlockHeight,
-    // }).add(initLoteryTx);
+    const tx2 = new web3.Transaction({
+      feePayer: wallet.publicKey,
+      blockhash: getBLockHash.blockhash,
+      lastValidBlockHeight: getBLockHash.lastValidBlockHeight,
+    }).add(initLoteryTx);
 
-    // try {
-    //   const lotaryTx = await provider.sendAndConfirm(tx2, [], {
-    //     skipPreflight: true,
-    //   });
-    //   console.log(getExplorerLink("address", lotaryTx, "devnet"));
-    // } catch (exception: any) {
-    //   console.log(exception);
-    // }
+    try {
+      const lotaryTx = await provider.sendAndConfirm(tx2, [], {
+        skipPreflight: true,
+      });
+      console.log(getExplorerLink("address", lotaryTx, "devnet"));
+    } catch (exception: any) {
+      console.log(exception);
+    }
 
     await buyTickets();
   });
