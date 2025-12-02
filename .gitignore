@@ -13,4 +13,5 @@ test-ledger
 */.DS_Store
 */.surfpool
 */.vscode
+./yellowstone-grpc
 
