@@ -116,6 +116,7 @@ const generateBidders = ({
   count,
   name = startName,
   libraryName = startLibraryName,
+  lamports = START_LAMPORTS,
 }): Array<[Keypair, PublicKey]> => {
   const bidders = [];
 
@@ -129,7 +130,7 @@ const generateBidders = ({
     context.setAccount(highestBidder.publicKey, {
       data: new Uint8Array([]),
       executable: false,
-      lamports: 100_000_000_000,
+      lamports,
       owner: SYSTEM_PROGRAM_ID,
     });
   }
@@ -232,6 +233,8 @@ async function bidNft({
   name?: string;
 }): Promise<TransactionMetadata | FailedTransactionMetadata> {
   const transaction = await transactionObj(creator, context);
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   let escrowAccount;
 
@@ -393,7 +396,7 @@ describe("dapp", () => {
     context.setAccount(creator.publicKey, {
       data: new Uint8Array([]),
       executable: false,
-      lamports: 100_000_000_000,
+      lamports: START_LAMPORTS,
       owner: SYSTEM_PROGRAM_ID,
     });
   };
@@ -617,6 +620,171 @@ describe("dapp", () => {
       expect(nftInfoAccount?.currentPrice.toNumber()).to.equal(
         price + bidStep * 7
       );
+    });
+
+    it("should fail to bid after auction expires", async () => {
+      // Warp time past the auction end time
+      const clock = context.getClock();
+      context.setClock(
+        new Clock(
+          clock.slot,
+          clock.epochStartTimestamp,
+          clock.epoch,
+          clock.leaderScheduleEpoch,
+          BigInt(currentTime + 2000) // Set unix timestamp past auction end
+        )
+      );
+
+      const tx = await bidNft({
+        context,
+        creator: bidders[0][0],
+        highestBidderPubkey: bidders[0][1],
+        program,
+        name: "Test",
+      });
+
+      if ("err" in tx) {
+        const logs = tx.meta().prettyLogs();
+        expect(logs).to.include("Auction time has expired");
+      } else {
+        expect.fail("Transaction should have failed but succeeded");
+      }
+    });
+
+    it("should fail to bid with insufficient funds", async () => {
+      const poorBidder = generateBidders({
+        context,
+        count: 1,
+        lamports: price - 1,
+      })[0][0];
+
+      const escrowBidder = escrowBidderPDA(startLibraryName, "Test");
+
+      const tx = await bidNft({
+        context,
+        creator: poorBidder,
+        highestBidderPubkey: escrowBidder[0],
+        program,
+        name: "Test",
+      });
+
+      if ("err" in tx) {
+        const logs = tx.meta().prettyLogs();
+        // The transaction should fail due to insufficient funds
+        expect(logs).to.satisfy(
+          (logs: string) =>
+            logs.includes("insufficient") ||
+            logs.includes("Transfer: insufficient lamports") ||
+            logs.includes("custom program error")
+        );
+      } else {
+        expect.fail("Transaction should have failed but succeeded");
+      }
+    });
+
+    it("should handle multiple consecutive bids from same bidder", async () => {
+      const bidderBalanceBefore = await provider.connection.getAccountInfo(
+        bidders[0][0].publicKey
+      );
+
+      // Place first bid
+      await bidNft({
+        context,
+        creator: bidders[0][0],
+        highestBidderPubkey: bidders[0][1],
+        program,
+        name: "Test",
+      });
+
+      // Place second bid from same bidder
+      await bidNft({
+        context,
+        creator: bidders[0][0],
+        highestBidderPubkey: bidders[0][1],
+        program,
+        name: "Test",
+      });
+
+      // Place third bid from same bidder
+      await bidNft({
+        context,
+        creator: bidders[0][0],
+        highestBidderPubkey: bidders[0][1],
+        program,
+        name: "Test",
+      });
+
+      const bidderBalanceAfter = await provider.connection.getAccountInfo(
+        bidders[0][0].publicKey
+      );
+
+      const nftInfoAccount = await program.account.nftInfo.fetch(
+        nftInfoPDA("Test")[0]
+      );
+
+      // Verify the price increased correctly (3 bids)
+      expect(nftInfoAccount.currentPrice.toNumber()).to.equal(
+        price + bidStep * 3
+      );
+
+      // Verify the bidder is still the current bidder
+      expect(nftInfoAccount.currentBidder.toString()).to.equal(
+        bidders[0][0].publicKey.toString()
+      );
+
+      // Verify the bidder's balance decreased by the total of all bids
+      // They should NOT receive refunds for their own previous bids
+      const totalBidAmount =
+        price + bidStep + (price + bidStep * 2) + (price + bidStep * 3);
+
+      const expectedBalance =
+        bidderBalanceBefore!.lamports - totalBidAmount - TRANSFER_FEE * 3;
+
+      expect(bidderBalanceAfter?.lamports).to.equal(expectedBalance);
+    });
+
+    it("should handle some bids happening almost simultaneously", async () => {
+      const bidders = generateBidders({ context, count: 44 });
+
+      const results = await Promise.all(
+        bidders.map(async (bidder) =>
+          bidNft({
+            context,
+            creator: bidder[0],
+            highestBidderPubkey: bidder[1],
+            program,
+            name: "Test",
+          })
+        )
+      );
+
+      const nftInfoAccount = await program.account.nftInfo.fetch(
+        nftInfoPDA("Test")[0]
+      );
+
+      expect(nftInfoAccount.currentPrice.toNumber()).to.be.eq(
+        price + bidStep * 44
+      );
+
+      const currentBidder = bidders.find((bidder) =>
+        bidder[1].equals(nftInfoAccount.currentBidder)
+      );
+
+      const balances = await Promise.all(
+        bidders.map((bidder) =>
+          provider.connection.getAccountInfo(bidder[0].publicKey)
+        )
+      );
+
+      const lastOneBidderBalancd = balances.pop();
+
+      expect(lastOneBidderBalancd?.lamports).to.be.eql(
+        START_LAMPORTS - 40000 - TRANSFER_FEE - bidStep * 44
+      );
+
+      balances.forEach((balance) => {
+        expect(balance?.lamports).to.be.eql(100_000_000_000 - TRANSFER_FEE);
+      });
     });
   });
 

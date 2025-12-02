@@ -97,8 +97,6 @@ pub fn _common_bidding_logic<'info>(
     )?;
 
     if previous_bidder_key != payer.key() {
-        nft_info.current_bidder = payer.key();
-
         require!(previous_bidder.key() == previous_bidder_key, ErrorCode::InvalidPreviousBidder);
         require!(previous_bidder.owner == &system_program::ID, ErrorCode::InvalidAccountOwner);
         require!(nft_bidder_escrow.get_lamports() >= refund_amount, ErrorCode::InsufficientFunds);
@@ -107,6 +105,7 @@ pub fn _common_bidding_logic<'info>(
         **previous_bidder.try_borrow_mut_lamports()? += refund_amount;
     }
 
+    nft_info.current_bidder = payer.key();
     nft_bidder_escrow.payer = payer.key();
     nft_info.current_price = nft_info.current_price + nft_info.bid_step;
 
