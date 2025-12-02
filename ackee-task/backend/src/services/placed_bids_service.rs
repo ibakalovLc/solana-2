@@ -38,23 +38,54 @@ pub async fn create_bid_placed_event() {
 }
 
 pub async fn save_bid_placed(payload: TransactionEvent) {
-    let database = Database::connect().await.unwrap();
-    let client = database.pool.get().await.expect("Failed to get pool connection");
+    let database = match Database::connect().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Failed to connect to database: {}", e);
+            return;
+        }
+    };
+
+    let client = match database.pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            log::error!("Failed to get pool connection: {}", e);
+            return;
+        }
+    };
 
     let log = payload.logs.iter().find(|log| log.contains("Program data:"));
 
     if let Some(data) = log.and_then(|l| l.strip_prefix("Program data: ")) {
-        let bytes = STANDARD.decode(data).expect("Invalid base64");
+        let bytes = match STANDARD.decode(data) {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("Failed to decode base64: {}", e);
+                return;
+            }
+        };
 
-        let payload = PlacedBidsPayload::try_from_slice(&bytes[8..]).expect(
-            "Failed to deserialize"
-        );
+        let payload = match PlacedBidsPayload::try_from_slice(&bytes[8..]) {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Failed to deserialize payload: {}", e);
+                return;
+            }
+        };
 
-        let bid = PlacedBids::try_from(payload).unwrap();
+        let bid = match PlacedBids::try_from(payload) {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("Failed to convert payload to PlacedBids: {}", e);
+                return;
+            }
+        };
+
         log::info!("Saving bid placed event: {:?}", bid);
         let query =
             "INSERT INTO placed_bids (id, timestamp, nft_name, nft_address, bidder, amount) VALUES ($1, $2, $3, $4, $5, $6)";
-        client
+
+        if let Err(e) = client
             .execute(
                 query,
                 &[
@@ -66,7 +97,10 @@ pub async fn save_bid_placed(payload: TransactionEvent) {
                     &(bid.amount as i64),
                 ]
             ).await
-            .unwrap();
+        {
+            log::error!("Failed to insert bid into database: {}", e);
+            return;
+        }
 
         // Publish to all_events queue
         let event = BidPlacedEvent {
@@ -74,15 +108,30 @@ pub async fn save_bid_placed(payload: TransactionEvent) {
             data: bid,
         };
         if let Ok(json) = serde_json::to_string(&event) {
-            let _ = Broker::publish(ALL_EVENTS, Bytes::from(json)).await;
+            if let Err(e) = Broker::publish(ALL_EVENTS, Bytes::from(json)).await {
+                log::error!("Failed to publish event to broker: {}", e);
+            }
         }
     }
 }
 
 pub async fn create_bid_table_if_not_exists() {
-    let database = Database::connect().await.unwrap();
+    let database = match Database::connect().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Failed to connect to database: {}", e);
+            return;
+        }
+    };
 
-    let client = database.pool.get().await.expect("Failed to get pool connection");
+    let client = match database.pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            log::error!("Failed to get pool connection: {}", e);
+            return;
+        }
+    };
+
     let query =
         "CREATE TABLE IF NOT EXISTS placed_bids (
         id UUID PRIMARY KEY,
@@ -93,17 +142,22 @@ pub async fn create_bid_table_if_not_exists() {
         amount BIGINT NOT NULL
     )";
 
-    client.execute(query, &[]).await.unwrap();
+    if let Err(e) = client.execute(query, &[]).await {
+        log::error!("Failed to create placed_bids table: {}", e);
+    } else {
+        log::info!("placed_bids table created or already exists");
+    }
 }
 
 pub async fn get_placed_bids_by_nft_address(
     address: String
 ) -> Result<Vec<PlacedBids>, Box<dyn std::error::Error>> {
-    let database = Database::connect().await.unwrap();
-    let client = database.pool.get().await.expect("Failed to get pool connection");
+    let database = Database::connect().await?;
+    let client = database.pool.get().await
+        .map_err(|e| format!("Failed to get pool connection: {}", e))?;
 
     let query = "SELECT * FROM placed_bids WHERE nft_address = $1";
-    let rows = client.query(query, &[&address]).await.unwrap();
+    let rows = client.query(query, &[&address]).await?;
 
     Ok(PlacedBids::from_row_all(&rows))
 }
@@ -111,11 +165,12 @@ pub async fn get_placed_bids_by_nft_address(
 pub async fn get_placed_bids_by_bidder(
     bidder: String
 ) -> Result<Vec<PlacedBids>, Box<dyn std::error::Error>> {
-    let database = Database::connect().await.unwrap();
-    let client = database.pool.get().await.expect("Failed to get pool connection");
+    let database = Database::connect().await?;
+    let client = database.pool.get().await
+        .map_err(|e| format!("Failed to get pool connection: {}", e))?;
 
     let query = "SELECT * FROM placed_bids WHERE bidder = $1";
-    let rows = client.query(query, &[&bidder]).await.unwrap();
+    let rows = client.query(query, &[&bidder]).await?;
 
     Ok(PlacedBids::from_row_all(&rows))
 }

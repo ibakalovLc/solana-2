@@ -22,7 +22,7 @@ use crate::{
     },
 };
 
-const PORGRAM_ADDRESS: &str = "EDFwnAysttkv5TW7davfHDuFctxnZxNRb8WCU2AVf7um";
+const PROGRAM_ADDRESS: &str = "EDFwnAysttkv5TW7davfHDuFctxnZxNRb8WCU2AVf7um";
 
 mod models;
 mod routes;
@@ -31,27 +31,31 @@ mod structs;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    unsafe {
-        env::set_var(
-            env_logger::DEFAULT_FILTER_ENV,
-            env::var_os(env_logger::DEFAULT_FILTER_ENV).unwrap_or_else(|| "info".into())
-        );
+    // Initialize logger with default level if not set
+    if env::var(env_logger::DEFAULT_FILTER_ENV).is_err() {
+        env::set_var(env_logger::DEFAULT_FILTER_ENV, "info");
     }
 
     env_logger::init();
 
-    let connection: Result<
-        services::db_service::Database,
-        postgres::Error
-    > = services::db_service::Database::connect().await;
+    // Connect to database with proper error handling
+    let connection = services::db_service::Database::connect().await
+        .map_err(|e| {
+            log::error!("Failed to connect to database: {}", e);
+            std::io::Error::new(std::io::ErrorKind::Other, format!("Database connection failed: {}", e))
+        })?;
 
+    log::info!("Database connection established successfully");
+
+    // Initialize event subscribers
     create_init_library_event().await;
     create_bid_placed_event().await;
     create_mint_nft_event().await;
     create_transfer_nft_event().await;
 
+    // Spawn gRPC subscription task
     tokio::spawn(async move {
-        match transactions_subscribe(PORGRAM_ADDRESS).await {
+        match transactions_subscribe(PROGRAM_ADDRESS).await {
             Ok(_) => {
                 log::info!("Successfully subscribed to transactions");
             }
@@ -61,34 +65,28 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    match connection {
-        Ok(connection) => {
-            println!("Server started on http://127.0.0.1:8080");
-            create_bid_table_if_not_exists().await;
-            create_winners_table_if_not_exists().await;
-            create_library_table_if_not_exists().await;
-            create_nft_table_if_not_exists().await;
+    // Create database tables
+    log::info!("Creating database tables if not exists...");
+    create_bid_table_if_not_exists().await;
+    create_winners_table_if_not_exists().await;
+    create_library_table_if_not_exists().await;
+    create_nft_table_if_not_exists().await;
 
-            HttpServer::new(move || {
-                App::new()
-                    .app_data(web::Data::new(connection.clone()))
-                    .service(get_placed_bids_route)
-                    .service(get_placed_bids_by_bidder_route)
-                    .service(get_winners_route)
-                    .service(get_collections_route)
-                    .service(get_nfts_by_collection_route)
-                    .service(events_sse_route)
-                    .service(ping_subscribe_route)
-            })
+    log::info!("Server starting on http://127.0.0.1:8080");
 
-                .bind("127.0.0.1:8080")?
-                .run().await?;
-
-            Ok(())
-        }
-        Err(e) => {
-            println!("Error connecting to database: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
-        }
-    }
+    // Start HTTP server
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(connection.clone()))
+            .service(get_placed_bids_route)
+            .service(get_placed_bids_by_bidder_route)
+            .service(get_winners_route)
+            .service(get_collections_route)
+            .service(get_nfts_by_collection_route)
+            .service(events_sse_route)
+            .service(ping_subscribe_route)
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
 }

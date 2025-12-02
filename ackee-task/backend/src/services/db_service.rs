@@ -1,6 +1,6 @@
 use std::env::var;
-use tokio_postgres::{ NoTls, Error, Config };
-use deadpool_postgres::{ Manager, ManagerConfig, Pool, RecyclingMethod };
+use tokio_postgres::{ NoTls, Config };
+use deadpool_postgres::{ Manager, ManagerConfig, Pool, RecyclingMethod, BuildError };
 
 #[derive(Clone)]
 pub struct Database {
@@ -8,7 +8,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn connect() -> Result<Self, Error> {
+    pub async fn connect() -> Result<Self, BuildError> {
         let mut pg_config = Config::new();
 
         pg_config.host(var("DB_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()));
@@ -21,7 +21,14 @@ impl Database {
         };
 
         let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-        let pool = Pool::builder(mgr).max_size(16).build().expect("Failed to create pool");
+
+        // Make pool size configurable
+        let pool_size = var("DB_POOL_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(16);
+
+        let pool = Pool::builder(mgr).max_size(pool_size).build()?;
 
         Ok(Self { pool })
     }

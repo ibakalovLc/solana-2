@@ -12,6 +12,46 @@ use crate::services::{
 
 pub static ALL_EVENTS: &str = "all_events";
 
+macro_rules! validate_input {
+    ($input:expr, $max_length:expr) => {
+        {
+            let input = $input;
+            if input.is_empty() {
+                return HttpResponse::BadRequest().body("Invalid input: Input cannot be empty");
+            }
+            if input.len() > $max_length {
+                return HttpResponse::BadRequest().body(
+                    format!("Invalid input: Input exceeds maximum length of {}", $max_length)
+                );
+            }
+        }
+    };
+}
+
+macro_rules! validate_solana_address {
+    ($address:expr) => {
+        {
+            let address = $address;
+            // Solana addresses are base58 encoded and typically 32-44 characters
+            let is_valid = address.len() >= 32 && address.len() <= 44 && address.chars().all(|c| {
+                c.is_ascii_alphanumeric() && !['0', 'O', 'I', 'l'].contains(&c)
+            });
+            if !is_valid {
+                return HttpResponse::BadRequest().body("Invalid Solana address format");
+            }
+        }
+    };
+}
+
+macro_rules! validate_solana_input {
+    ($input:expr, $max_length:expr) => {
+        {
+            validate_input!($input, $max_length);
+            validate_solana_address!($input);
+        }
+    };
+}
+
 struct StreamGuard {
     _guard: oneshot::Sender<()>,
 }
@@ -25,55 +65,75 @@ impl Drop for StreamGuard {
 #[get("/placed-bids/{nft_address}")]
 pub async fn get_placed_bids_route(path: web::Path<String>) -> HttpResponse {
     let nft_address = path.into_inner();
-    let nfts = get_placed_bids_by_nft_address(nft_address);
 
-    match nfts.await {
+    validate_solana_input!(&nft_address, 100);
+
+    match get_placed_bids_by_nft_address(nft_address).await {
         Ok(rows) => HttpResponse::Ok().json(rows),
-        Err(err) => HttpResponse::InternalServerError().body(format!("Database error: {}", err)),
+        Err(err) => {
+            log::error!("Database error in get_placed_bids_route: {}", err);
+            HttpResponse::InternalServerError().body("Internal server error")
+        }
     }
 }
 
 #[get("/placed-bids/bidder/{bidder_address}")]
 pub async fn get_placed_bids_by_bidder_route(path: web::Path<String>) -> HttpResponse {
     let bidder_address = path.into_inner();
-    let bids = get_placed_bids_by_bidder(bidder_address);
 
-    match bids.await {
+    validate_solana_input!(&bidder_address, 100);
+
+    match get_placed_bids_by_bidder(bidder_address).await {
         Ok(rows) => HttpResponse::Ok().json(rows),
-        Err(err) => HttpResponse::InternalServerError().body(format!("Database error: {}", err)),
+        Err(err) => {
+            log::error!("Database error in get_placed_bids_by_bidder_route: {}", err);
+            HttpResponse::InternalServerError().body("Internal server error")
+        }
     }
 }
 
 #[get("/winners/{nft_address}")]
 pub async fn get_winners_route(path: web::Path<String>) -> HttpResponse {
     let nft_address = path.into_inner();
-    let winners = get_winners_by_nft_address(nft_address);
 
-    match winners.await {
+    validate_input!(&nft_address, 100);
+
+    match get_winners_by_nft_address(nft_address).await {
         Ok(rows) => HttpResponse::Ok().json(rows),
-        Err(err) => HttpResponse::InternalServerError().body(format!("Database error: {}", err)),
+        Err(err) => {
+            log::error!("Database error in get_winners_route: {}", err);
+            HttpResponse::InternalServerError().body("Internal server error")
+        }
     }
 }
 
 #[get("/collections/{collection_address}")]
 pub async fn get_collections_route(path: web::Path<String>) -> HttpResponse {
     let collection_address = path.into_inner();
-    let collections = get_collections_by_address(collection_address);
 
-    match collections.await {
+    validate_solana_input!(&collection_address, 100);
+
+    match get_collections_by_address(collection_address).await {
         Ok(rows) => HttpResponse::Ok().json(rows),
-        Err(err) => HttpResponse::InternalServerError().body(format!("Database error: {}", err)),
+        Err(err) => {
+            log::error!("Database error in get_collections_route: {}", err);
+            HttpResponse::InternalServerError().body("Internal server error")
+        }
     }
 }
 
 #[get("/nfts/{collection_address}")]
 pub async fn get_nfts_by_collection_route(path: web::Path<String>) -> HttpResponse {
     let collection_address = path.into_inner();
-    let nfts = get_nfts_by_collection_address(collection_address);
 
-    match nfts.await {
+    validate_solana_input!(&collection_address, 100);
+
+    match get_nfts_by_collection_address(collection_address).await {
         Ok(rows) => HttpResponse::Ok().json(rows),
-        Err(err) => HttpResponse::InternalServerError().body(format!("Database error: {}", err)),
+        Err(err) => {
+            log::error!("Database error in get_nfts_by_collection_route: {}", err);
+            HttpResponse::InternalServerError().body("Internal server error")
+        }
     }
 }
 

@@ -44,12 +44,9 @@ RUN apt-get update && apt-get install -y \
     llvm-dev \
     libclang-dev \
     clang \
-    pkg-config \
-    libssl-dev \
     libudev-dev \
     libhidapi-dev \
     libusb-1.0-0-dev \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CARGO_HTTP_TIMEOUT=1200
@@ -59,6 +56,11 @@ RUN git clone https://github.com/txtx/surfpool.git
 WORKDIR /surfpool
 RUN cargo surfpool-install --features geyser_plugin
 RUN surfpool --version
-RUN CMD ["rm", "-r", "/surfpool"]
+
+
+RUN useradd -m -u 1000 surfpool && \
+    chown -R surfpool:surfpool /surfpool
+
+USER surfpool
 
 EXPOSE 8899 8900 10000 18488

@@ -38,23 +38,54 @@ pub async fn create_transfer_nft_event() {
 }
 
 pub async fn save_transfer_nft(payload: TransactionEvent) {
-    let database = Database::connect().await.unwrap();
-    let client = database.pool.get().await.expect("Failed to get pool connection");
+    let database = match Database::connect().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Failed to connect to database: {}", e);
+            return;
+        }
+    };
+
+    let client = match database.pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            log::error!("Failed to get pool connection: {}", e);
+            return;
+        }
+    };
 
     let log = payload.logs.iter().find(|log| log.contains("Program data:"));
 
     if let Some(data) = log.and_then(|l| l.strip_prefix("Program data: ")) {
-        let bytes = STANDARD.decode(data).expect("Invalid base64");
+        let bytes = match STANDARD.decode(data) {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("Failed to decode base64: {}", e);
+                return;
+            }
+        };
 
-        let payload = TransferNftPayload::try_from_slice(&bytes[8..]).expect(
-            "Failed to deserialize"
-        );
+        let payload = match TransferNftPayload::try_from_slice(&bytes[8..]) {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Failed to deserialize payload: {}", e);
+                return;
+            }
+        };
 
-        let transfer = TransferNft::try_from(payload).unwrap();
+        let transfer = match TransferNft::try_from(payload) {
+            Ok(t) => t,
+            Err(e) => {
+                log::error!("Failed to convert payload to TransferNft: {}", e);
+                return;
+            }
+        };
+
         log::info!("Saving transfer nft event: {:?}", transfer);
         let query =
             "INSERT INTO winners (id, timestamp, nft_name, recipient, owner) VALUES ($1, $2, $3, $4, $5)";
-        client
+
+        if let Err(e) = client
             .execute(
                 query,
                 &[
@@ -65,7 +96,10 @@ pub async fn save_transfer_nft(payload: TransactionEvent) {
                     &transfer.owner,
                 ]
             ).await
-            .unwrap();
+        {
+            log::error!("Failed to insert transfer into database: {}", e);
+            return;
+        }
 
         // Publish to all_events queue
         let event = TransferNftEvent {
@@ -73,15 +107,30 @@ pub async fn save_transfer_nft(payload: TransactionEvent) {
             data: transfer,
         };
         if let Ok(json) = serde_json::to_string(&event) {
-            let _ = Broker::publish(ALL_EVENTS, Bytes::from(json)).await;
+            if let Err(e) = Broker::publish(ALL_EVENTS, Bytes::from(json)).await {
+                log::error!("Failed to publish event to broker: {}", e);
+            }
         }
     }
 }
 
 pub async fn create_winners_table_if_not_exists() {
-    let database = Database::connect().await.unwrap();
+    let database = match Database::connect().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Failed to connect to database: {}", e);
+            return;
+        }
+    };
 
-    let client = database.pool.get().await.expect("Failed to get pool connection");
+    let client = match database.pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            log::error!("Failed to get pool connection: {}", e);
+            return;
+        }
+    };
+
     let query =
         "CREATE TABLE IF NOT EXISTS winners (
         id UUID PRIMARY KEY,
@@ -91,17 +140,22 @@ pub async fn create_winners_table_if_not_exists() {
         owner TEXT NOT NULL
     )";
 
-    client.execute(query, &[]).await.unwrap();
+    if let Err(e) = client.execute(query, &[]).await {
+        log::error!("Failed to create winners table: {}", e);
+    } else {
+        log::info!("winners table created or already exists");
+    }
 }
 
 pub async fn get_winners_by_nft_address(
     nft_address: String
 ) -> Result<Vec<TransferNft>, Box<dyn std::error::Error>> {
-    let database = Database::connect().await.unwrap();
-    let client = database.pool.get().await.expect("Failed to get pool connection");
+    let database = Database::connect().await?;
+    let client = database.pool.get().await
+        .map_err(|e| format!("Failed to get pool connection: {}", e))?;
 
     let query = "SELECT * FROM winners WHERE nft_name = $1";
-    let rows = client.query(query, &[&nft_address]).await.unwrap();
+    let rows = client.query(query, &[&nft_address]).await?;
 
     Ok(TransferNft::from_row_all(&rows))
 }
