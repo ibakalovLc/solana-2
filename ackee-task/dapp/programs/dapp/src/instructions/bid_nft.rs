@@ -1,15 +1,15 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{ prelude::*, system_program };
 use anchor_lang::system_program::{ transfer, Transfer };
 
 use anchor_spl::{
-    metadata::{ Metadata },
     associated_token::AssociatedToken,
+    metadata::Metadata,
     token_interface::{ Mint, TokenAccount, TokenInterface },
 };
 
-use crate::{ EscrowBidder, constants::* };
-use crate::state::{ AuctionState, NftInfo };
 use crate::enums::ErrorCode;
+use crate::state::{ AuctionState, NftInfo };
+use crate::{ constants::*, EscrowBidder };
 
 #[derive(Accounts)]
 #[instruction(name: String)]
@@ -60,12 +60,10 @@ pub struct BidNft<'info> {
 pub fn _bid_nft(ctx: &mut Context<BidNft>, _name: String) -> Result<()> {
     let auction_state: &mut Account<'_, AuctionState> = &mut ctx.accounts.auction_state;
     let nft_info: &mut Account<'_, NftInfo> = &mut ctx.accounts.nft_info;
-    let rent_exempt_minimum: u64 = ctx.accounts.rent.minimum_balance(8 + EscrowBidder::INIT_SPACE);
 
     _common_bidding_logic(
         auction_state,
         nft_info,
-        rent_exempt_minimum,
         &mut ctx.accounts.nft_bidder_escrow,
         &mut ctx.accounts.previous_bidder,
         &ctx.accounts.system_program,
@@ -76,7 +74,6 @@ pub fn _bid_nft(ctx: &mut Context<BidNft>, _name: String) -> Result<()> {
 pub fn _common_bidding_logic<'info>(
     auction_state: &mut Account<'info, AuctionState>,
     nft_info: &mut Account<'info, NftInfo>,
-    rent_exempt_minimum: u64,
     nft_bidder_escrow: &mut Account<'info, EscrowBidder>,
     previous_bidder: &mut AccountInfo<'info>,
     system_program: &Program<'info, System>,
@@ -84,18 +81,12 @@ pub fn _common_bidding_logic<'info>(
 ) -> Result<()> {
     let clock = Clock::get()?;
 
+    let previous_bidder_key = nft_info.current_bidder;
+    let refund_amount = nft_info.current_price;
+
     require!(clock.unix_timestamp < auction_state.auction_end_time, ErrorCode::AuctionTimeExpired);
 
     let bid_amount = nft_info.current_price + nft_info.bid_step;
-
-    msg!(
-        "Bid amount bidders: current_price {:?} nft_info bid_step {:?} highest_bidder {:?} rent_exempt_minimum {:?} bid_amount {:?}",
-        nft_info.current_price,
-        nft_info.bid_step,
-        nft_bidder_escrow.get_lamports(),
-        rent_exempt_minimum,
-        bid_amount
-    );
 
     transfer(
         CpiContext::new(system_program.to_account_info(), Transfer {
@@ -105,14 +96,11 @@ pub fn _common_bidding_logic<'info>(
         bid_amount
     )?;
 
-    if nft_info.current_bidder != payer.key() {
+    if previous_bidder_key != payer.key() {
         nft_info.current_bidder = payer.key();
 
-        msg!("Previous bidder:  {} by {}", nft_info.current_bidder, nft_info.current_price);
-
-        // Calculate refund amount
-        let refund_amount = nft_info.current_price;
-
+        require!(previous_bidder.key() == previous_bidder_key, ErrorCode::InvalidPreviousBidder);
+        require!(previous_bidder.owner == &system_program::ID, ErrorCode::InvalidAccountOwner);
         require!(nft_bidder_escrow.get_lamports() >= refund_amount, ErrorCode::InsufficientFunds);
 
         **nft_bidder_escrow.to_account_info().try_borrow_mut_lamports()? -= refund_amount;

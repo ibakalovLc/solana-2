@@ -40,4 +40,8 @@ pub enum ErrorCode {
     InvalidLibraryName,
     #[msg("Invalid nft name")]
     InvalidNftName,
+    #[msg("Invalid previous bidder")]
+    InvalidPreviousBidder,
+    #[msg("Invalid account owner")]
+    InvalidAccountOwner,
 }
