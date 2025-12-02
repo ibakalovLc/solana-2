@@ -1,0 +1,100 @@
+services:
+  ib-postgres:
+        image: timescale/timescaledb:latest-pg17
+        container_name: ravecoin-postgres
+        environment:
+            POSTGRES_USER: dev
+            POSTGRES_PASSWORD: dev
+            POSTGRES_DB: task
+            POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+            LC_COLLATE: "C"
+            LC_CTYPE: "C"
+        volumes:
+            - postgres_ib_sql_data:/var/lib/postgresql/data
+        command: postgres -c shared_preload_libraries=timescaledb -c pg_stat_statements.track=all -c max_connections=200
+        ports:
+            - 5432:5432
+        networks:
+            - ib_network
+        restart: always
+
+  ib-nats:
+        image: nats:latest
+        container_name: ib-nats
+        ports:
+            - 4222:4222
+        networks:
+            - ib_network
+        restart: always
+    # "libpath": "/geyser/target/release/libyellowstone_grpc_geyser.so",
+ 
+  surfpool-with-geyser-grpc:
+    platform: linux/arm64
+    build:
+      context: .
+      target: runtime
+      dockerfile: Dockerfile
+    image: surfpool-with-geyser-grpc:latest 
+    volumes:
+    - ./geyser:/surfpool/geyser
+    ports:
+      - "8899:8899" 
+      - "8900:8900"
+      - "10000:10000"
+      - "18488:18488"
+    command: ["surfpool", "start", "--no-tui", "--host", "0.0.0.0", "--port", "8899", "--log-level", "debug", "--geyser-plugin-config", "./config.json"]
+    depends_on:
+      - surfpool
+    networks:
+      - ib_network
+    restart: always
+
+  surfpool-with-geyser-grpc-prebuid:
+    platform: linux/arm64
+    build:
+      context: .
+      target: prebuid-runtime
+      dockerfile: Dockerfile
+    image: surfpool-with-geyser-grpc-prebuid:latest 
+    volumes:
+    - ./geyser:/surfpool/geyser
+    ports:
+      - "8899:8899" 
+      - "8900:8900"
+      - "10000:10000"
+      - "18488:18488"
+    command: [ "surfpool", "start", "--no-tui", "--host", "0.0.0.0", "--port", "8899", "--log-level", "debug", "--geyser-plugin-config", "./config.json"]
+    depends_on:
+      - surfpool
+    networks: 
+      - ib_network
+    restart: always
+   
+  surfpool:
+    image: surfpool-full:0.0.1
+    build:
+      context: .
+      target: surfpool-full
+      dockerfile: Dockerfile
+
+    networks: 
+      - ib_network
+    restart: always 
+
+  surfpool2:
+    image: surfpool-full2:0.0.1
+    build:
+      context: .
+      target: surfpool-full2
+      dockerfile: Dockerfile
+    command: ["tail", "-f", "/dev/null"]
+    networks: 
+      - ib_network
+    restart: always 
+
+networks:
+    ib_network:
+        name: ib_network
+
+volumes: 
+    postgres_ib_sql_data:
