@@ -75,10 +75,9 @@ services:
       context: .
       target: surfpool-full
       dockerfile: Dockerfile
-
     networks: 
       - ib_network
-    restart: always 
+
 
 networks:
     ib_network:
